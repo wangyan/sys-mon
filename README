@@ -1,0 +1,13 @@
+一、简介
+
+该脚本用于监控VPS服务器负载，Web程序内存及CPU使用。当服务器系统负载或内存使用达到预设值，则重启该程序，或者某个php-cgi进程占用CPU过大，则直接kill掉该进程。目的在于缓解服务器资源耗尽导致意外宕机等情况。
+
+二、使用方法
+
+git clone git://github.com/wangyan/sys-mon.git
+vim sys-mon/sys-mon.sh （修改等预设阀值）
+mkdir /var/script
+mv sys-mon/sys-mon.sh /var/script
+
+crontab -e (设置每分钟执行一次)
+* * * * * /bin/bash  /var/script/sys-mon.sh
