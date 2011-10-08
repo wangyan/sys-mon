@@ -10,7 +10,7 @@
 #
 # See: https://wangyan.org/blog/sys-mon-shell-script.html
 #
-# V0.2, since 2011-09-14
+# V0.3, since 2011-09-14
 #====================================================================
 
 # Need to monitor the service name
@@ -22,7 +22,7 @@ PID_CPU_MAX="20"
 # The maximum allowed memory (%)
 SYS_MEM_MAX="90"
 
-# The maximum allowed system load (%)
+# The maximum allowed system load
 SYS_LOAD_MAX="5"
 
 # Log path settings
@@ -33,6 +33,9 @@ DATA_TIME=$(date +"%y-%m-%d %H:%M:%S")
 
 # Your email address
 EMAIL="webmaster@wangyan.org"
+
+# Your website url
+MY_URL="https://wangyan.org/blog"
 
 #====================================================================
 
@@ -64,7 +67,15 @@ IFS="$IFS_TMP"
     LOAD_COMPARE=`awk 'BEGIN{print('$SYS_LOAD'>'$SYS_LOAD_MAX')}'`
 # echo -e "$NAME: CPU_SUM:$SYS_CPU_SUM MEM_SUM:$SYS_MEM_SUM SYS_LOAD:$SYS_LOAD\n"
 
-    if [[ "$MEM_COMPARE" = "1" || "$LOAD_COMPARE" = "1" ]];then
+    for ((i=0;i<3;i++))
+    do
+STATUS_CODE=`curl -o /dev/null -s -w %{http_code} $MY_URL`
+        if [ "$STATUS_CODE" = "200" ];then
+break
+fi
+done
+
+if [[ "$MEM_COMPARE" = "1" || "$LOAD_COMPARE" = "1" || "$STATUS_CODE" = "502" ]];then
         /etc/init.d/$NAME stop
         if [ "$?" = "0" ];then
 echo "$DATA_TIME Stop $NAME successful (MEM:$SYS_MEM_SUM CPU:$SYS_CPU_SUM LOAD:$SYS_LOAD)" | tee -a $LOG_PATH
