@@ -1,53 +1,85 @@
-#!/bin/bash
-PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
-export PATH
+#! /bin/bash
+#====================================================================
+# sys-mon.sh
+#
+# Copyright (c) 2011, WangYan <webmaster@wangyan.org>
+# All rights reserved.
+# Distributed under the GNU General Public License, version 3.0.
+#
+# Monitor system mem and load, if too high, restart some service.
+#
+# See: https://wangyan.org/blog/sys-mon-shell-script.html
+#
+# V0.2, since 2011-09-14
+#====================================================================
 
-if [ $(id -u) != "0" ]; then
-printf "Error: You must be root to run this script!"
-    exit 1
-fi
+# Need to monitor the service name
+NAME_LIST="php-fpm mysql nginx"
 
-echo "#############################################################"
-echo "# PID Auto Reboot Tools"
-echo "# Env: Linux"
-echo "# Created by WangYan on 2011.08.01"
-echo "# Author Url: http://wangyan.org"
-echo "# Version: 0.1"
-echo "#############################################################"
-echo ""
+# Single process to allow the maximum CPU (%)
+PID_CPU_MAX="20"
 
-####################### User Custom Options #######################
+# The maximum allowed memory (%)
+SYS_MEM_MAX="90"
 
-PID_MEM_MAX="85"
-SYS_LOAD_MAX="3"
-NAME_LIST="php-fpm mysql"
+# The maximum allowed system load (%)
+SYS_LOAD_MAX="5"
 
-######################################################################
+# Log path settings
+LOG_PATH="/var/log/autoreboot.log"
+
+# Date time format setting
+DATA_TIME=$(date +"%y-%m-%d %H:%M:%S")
+
+# Your email address
+EMAIL="webmaster@wangyan.org"
+
+#====================================================================
 
 for NAME in $NAME_LIST
 do
-PID_MEM_SUM=0
-    PID_NUM_SUM=`ps aux | grep $NAME | wc -l`
-    PID_MEM_LIST=`ps aux | grep $NAME | awk '{print $4}'`
+SYS_CPU_SUM="0";SYS_MEM_SUM="0"
+    PID_LIST=`ps aux | grep $NAME | grep -v root`
 
-    for PID_MEM in $PID_MEM_LIST
+    IFS_TMP="$IFS";IFS=$'\n'
+    for PID in $PID_LIST
     do
-PID_MEM_SUM=`echo $PID_MEM_SUM + $PID_MEM | bc`
-    done
-SYS_LOAD=`uptime | awk '{print $(NF-2)}' | sed 's/,//'`
+PID_NUM=`echo $PID | awk '{print $2}'`
+        PID_CPU=`echo $PID | awk '{print $3}'`
+        PID_MEM=`echo $PID | awk '{print $4}'`
+# echo $NAME: $PID_NUM $PID_CPU $PID_MEM
 
-    MEM_VULE=`awk 'BEGIN{print('"$PID_MEM_SUM"'>='"$PID_MEM_MAX"'?"1":"0")}'`
-    LOAD_VULE=`awk 'BEGIN{print('"$SYS_LOAD"'>='"$SYS_LOAD_MAX"'?"1":"0")}'`
+# SYS_CPU_SUM=`echo $SYS_CPU_SUM + $PID_CPU | bc`
+        SYS_MEM_SUM=`echo $SYS_MEM_SUM + $PID_MEM | bc`
 
-    if [ $MEM_VULE = 1 ] || [ $LOAD_VULE = 1 ] ;then
-echo $(date +"%y-%m-%d %H:%M:%S") "killall $NAME" "(MEM:$PID_MEM_SUM,LOAD:$SYS_LOAD)">> /var/log/autoreboot.log
+        if [[ "$NAME" = "php-fpm" && "$PID_CPU" > "$PID_CPU_MAX" ]];then
+echo "$DATA_TIME kill $PID_NUM successful (CPU:$PID_CPU)" | tee -a $LOG_PATH
+            kill $PID_NUM
+        fi
+done
+IFS="$IFS_TMP"
+
+    SYS_LOAD=`uptime | awk '{print $(NF-2)}' | sed 's/,//'`
+    MEM_COMPARE=`awk 'BEGIN{print('$SYS_MEM_SUM'>'$SYS_MEM_MAX')}'`
+    LOAD_COMPARE=`awk 'BEGIN{print('$SYS_LOAD'>'$SYS_LOAD_MAX')}'`
+# echo -e "$NAME: CPU_SUM:$SYS_CPU_SUM MEM_SUM:$SYS_MEM_SUM SYS_LOAD:$SYS_LOAD\n"
+
+    if [[ "$MEM_COMPARE" = "1" || "$LOAD_COMPARE" = "1" ]];then
         /etc/init.d/$NAME stop
-        sleep 3
-        pkill $NAME
-
+        if [ "$?" = "0" ];then
+echo "$DATA_TIME Stop $NAME successful (MEM:$SYS_MEM_SUM CPU:$SYS_CPU_SUM LOAD:$SYS_LOAD)" | tee -a $LOG_PATH
+        else
+echo "$DATA_TIME Stop $NAME [failed] (MEM:$SYS_MEM_SUM CPU:$SYS_CPU_SUM LOAD:$SYS_LOAD)" | tee -a $LOG_PATH
+            sleep 3
+            pkill $NAME
+        fi
         /etc/init.d/$NAME start
-        echo $(date +"%y-%m-%d %H:%M:%S") "start $NAME" "(MEM:$PID_MEM_SUM,LOAD:$SYS_LOAD)" >> /var/log/autoreboot.log
-    else
-echo "$NAME very health!(MEM:$PID_MEM_SUM,LOAD:$SYS_LOAD)" > /dev/null
-    fi
+        if [ "$?" = "0" ];then
+echo "$DATA_TIME Start $NAME successful" | tee -a $LOG_PATH
+        else
+echo "$DATA_TIME Start $NAME [failed]" | tee -a $LOG_PATH
+            echo "$DATA_TIME Start $NAME failed" | mail -s "Start $NAME failed" $EMAIL
+        fi
+fi
+
 done
